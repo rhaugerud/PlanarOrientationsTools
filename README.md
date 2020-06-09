@@ -1,7 +1,7 @@
 # PlanarOrientationsTools
 ArcMap 10.7 - Python 2.7 scripts for working with planar orientations
 
-See file Documentation.docx for documentation and discussion of these tools.  Note that this file is under active revision: if you have comments, please contact me at rhaugerud@usgs.gov. 
+See file Documentation.docx for documentation and discussion of these tools.  Note that this file is under active revision: if you have sugestions or comments, please contact me at rhaugerud@usgs.gov. 
 
 To install this toolbox:
 
