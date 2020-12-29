@@ -5,6 +5,8 @@
 versionString = 'BeddingTracesToS&D.py, version of 8 April 2020'
 # 6 April 2020: Changed toolbox interface to use raster layer instead of raster dataset
 #     changed scatter and spread fields to Scatter and Spread
+# 29 December 2020:  Added optional Type and Symbol values
+
 
 import arcpy, sys, os.path, math
 import numpy as np
@@ -171,6 +173,7 @@ def makeXyzList(pointclass,stackLines):
         return xyzList,meanXYZ
 
 def gallo(ob):
+    # calculates OrientationConfidenceDegrees from Oblateness
     # Gallo et al. (JGR:Solid Earth, 2018) suggest
     #    O = ln(ev2/ev3) = Oblateness
     #    O > 5 = OrientationConfidenceDegrees <= 5
@@ -182,7 +185,7 @@ def gallo(ob):
     elif ob < 1.5 and ob >= 1:
         return 10**(2.2 - 0.8 * ob)
     else:
-        addMsgAndPrint('Oblateness <= 1. WTF!?')
+        addMsgAndPrint('Oblateness <= 1. OCD not defined')
         forceExit()
     
 #####################################
@@ -197,6 +200,14 @@ if sys.argv[7].upper() == 'TRUE':
     stackLines = True
 else:
     stackLines = False
+if sys.argv[8] <> '#':
+    calcType = sys.argv[8]
+else:
+    calcType = None
+if sys.argv[9] <> '#':
+    calcSymbol = sys.argv[9]
+else:
+    calcSymbol = None
 
 dens = densifyFactor * arcpy.Describe(dem).meanCellHeight
 maxScatter = maxScatter * arcpy.Describe(dem).meanCellHeight
@@ -206,16 +217,19 @@ debug1 = False
 
 addMsgAndPrint(versionString)
 
-
-
 ## check for required fields in orPts
 for xx in ('Type','Azimuth','Inclination','OrientationConfidenceDegrees',
            'OrientationSourceID','Notes','Oblateness','Spread','Scatter'):
     if not xx in fieldNameList(orPts):
         addMsgAndPrint('Please add field "'+xx+'" to '+orPts)
         addMsgAndPrint('    you may do this manually or')
-        addMsgAndPrint('    you may use script tool Prepare OrientationPoints')
+        addMsgAndPrint('    you may use script tool Prep OrientationPoints')
         forceExit()
+
+if 'Symbol' in fieldNameList(orPts):
+    hasSymbol = True
+else:
+    hasSymbol = False
 
 ## make sgdb if it doesn't already exist
 sgdb = scratchFolder +'/'+sgdbName
@@ -227,6 +241,8 @@ addMsgAndPrint('Getting list of OBJECTIDs')
 iDs = "OIDs:"
 for row in arcpy.da.SearchCursor(bt,["OBJECTID"]):
     iDs= iDs+' '+str(row[0])
+if stackLines:
+    iDs = iDs+' stacked'
 if len(iDs) > 254:
     iDs = iDs[0:254]
 
@@ -288,14 +304,14 @@ addMsgAndPrint('  oblateness = {:.1f}'.format(oblateness)+'  OCD, 95% confidence
         
 if oblateness < testOb or n < minN or scatter > maxScatter or spread < minSpread:
     if n < minN:
-        addMsgAndPrint('****n = '+str(n)+' is less than testvalue of '+str(minN))
+        arcpy.AddWarning('****n = '+str(n)+' is less than testvalue of '+str(minN))
     if oblateness < testOb:
-        addMsgAndPrint('****Oblateness = {:.1f}'.format(oblateness)+' is less than testvalue of '+str(testOb))
+        arcpy.AddWarning('****Oblateness = {:.1f}'.format(oblateness)+' is less than testvalue of '+str(testOb))
     if scatter > maxScatter:
-        addMsgAndPrint('****scatter = {:.2f}'.format(scatter)+' is more than testvalue of '+str(maxScatter))    
+        arcpy.AddWarning('****scatter = {:.2f}'.format(scatter)+' is more than testvalue of '+str(maxScatter))    
     if spread < minSpread:
-        addMsgAndPrint('****spread = {:.2f}'.format(spread)+' is less than testvalue of '+str(minSpread))
-    addMsgAndPrint('****Data are insufficient to define a plane. Aborting.')
+        arcpy.AddWarning('****spread = {:.2f}'.format(spread)+' is less than testvalue of '+str(minSpread))
+    arcpy.AddWarning('****Data are insufficient to define a plane. Aborting.')
     forceExit()
 
 ## if necessary, project from demSR to xlbtSR
@@ -306,19 +322,19 @@ if demSR <> xlbtSR:
 ## add new feature to OrientationPoints
 addMsgAndPrint('Adding result to '+orPts)
 fields = ["SHAPE@XY","Type","Azimuth","Inclination","OrientationSourceID","LocationSourceID","OrientationConfidenceDegrees","Notes","Oblateness","Scatter","Spread"]
+if hasSymbol:
+    fields.append('Symbol')
 cursor = arcpy.da.InsertCursor(orPts,fields)
 xy = [newPoint[0].X,newPoint[0].Y]
-cursor.insertRow([xy,'bedding',round(strike,1),round(dip,1),dsID,dsID,OCD,iDs,round(oblateness,3),round(scatter,2),round(spread,1)])
+if hasSymbol:
+    cursor.insertRow([xy,calcType,round(strike,1),round(dip,1),dsID,dsID,OCD,iDs,round(oblateness,3),round(scatter,2),round(spread,1),calcSymbol])
+else:
+    cursor.insertRow([xy,calcType,round(strike,1),round(dip,1),dsID,dsID,OCD,iDs,round(oblateness,3),round(scatter,2),round(spread,1)])
 arcpy.RefreshActiveView()
 
 ## write output to log file
 orPtsDesc = arcpy.Describe(orPts)
 logFileHost = arcpy.Describe(orPtsDesc.path)
-
-#addMsgAndPrint(logFileHost.dataType)
-#addMsgAndPrint('path = '+logFileHost.path)
-#addMsgAndPrint('catalog path = '+logFileHost.catalogPath)
-#addMsgAndPrint(logFileHost)
 
 if logFileHost.dataType == 'FeatureDataset':
     logPath = logFileHost.path
@@ -327,7 +343,6 @@ else:
 logfileName = os.path.join(logPath,os.path.basename(sys.argv[0])[:-3]+'-logfile.txt')
 addMsgAndPrint('Writing results to '+logfileName)
 logfile = open(logfileName,'a')
-# -----Date, time
 logfile.write(str(datetime.now())[:-7]+'\n')
 logfile.write(iDs+'\n')
 logfile.write('location = {:.0f}'.format(newPoint[0].X)+' {:.0f}'.format(newPoint[0].Y)+', srf = WKID '+str(xlbtSR.factoryCode)+'\n')
@@ -340,7 +355,6 @@ logfile.write('eigenvalues: '+str(eigenVals)+'\n')
 logfile.write('eigenvectors: \n')
 for x in eigenVects:
     logfile.write('  '+str(x)+'\n')
-# -----(separator)
 logfile.write('----\n')
 logfile.close()
 

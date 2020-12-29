@@ -4,14 +4,16 @@
 # Ralph Haugerud, U.S. Geological Survey
 # Code not subject to U.S. copyright
 
-versionString = 'ExtrapolatePlanes.py, version of 10 February 2020'
+# 29 December: added substition of dip = 89.99 for dip = 90, with issuance
+#    of a warning
+
+versionString = 'ExtrapolatePlanes.py, version of 29 December 2020'
 
 import math, os.path, arcpy, sys, shutil
 from arcpy.sa import *
 
 arcpy.CheckOutExtension("3D")
 arcpy.CheckOutExtension("Spatial")
-        
 
 ##=======================================
 # first 4 functions copied from GeMS_utilityFunctions.py
@@ -68,6 +70,7 @@ def makeCoordsList(xyz,azi,inc,radius):
               [x2,y2,z2],
               [x3,y3,z3],
               [x4,y4,z4]]
+
     return coordsList
 
 def makeControlPoints(dem,coordslist,scratchgdb):
@@ -101,7 +104,6 @@ def makeOutcropRaster(dem,controlPoints,inc,sgdb):
     arcpy.Minus_3d(dem, outRaster, intersectRaster1)
     arcpy.CalculateStatistics_management(intersectRaster1)
     # classify results
-    ###### need to trap for inclination = 90  ( tan(incR) = infinity )
     dH = math.tan(math.radians(inc)) * 2.0 * float(arcpy.env.cellSize)
     addMsgAndPrint('    classifying results, dH='+str(dH))
     outCon = Con(intersectRaster1, 0, 1, 'VALUE > '+str(dH)+' OR VALUE < -'+str(dH))
@@ -164,6 +166,9 @@ with arcpy.da.SearchCursor(inPts,['OID@','POINT_X','POINT_Y','Z',aziField,incFie
         azi = row[4] + gridDec  ############### or is it minus?
         inc = row[5]
         addMsgAndPrint('OID='+str(oid)+' strike='+str(azi)+' dip='+str(inc))
+        if inc == 90:
+            arcpy.AddWarning('  Substituting dip = 89.99')
+            inc = 89.99
         #addMsgAndPrint(str(xyz))
         coordsList = makeCoordsList(xyz, azi,inc,radius)
         controlPoints = makeControlPoints(dem,coordsList,scratchgdb)
@@ -175,7 +180,7 @@ with arcpy.da.SearchCursor(inPts,['OID@','POINT_X','POINT_Y','Z',aziField,incFie
         outCon.save(saveRaster)
         ## import existing layer file, reset source, rename to source
         addMsgAndPrint('  inserting new layer')
-        lyrFile = os.path.join(os.path.dirname(sys.argv[0]),'projectedBedding.lyr')
+        lyrFile = os.path.join(os.path.dirname(sys.argv[0]),'ProjectedBedding.lyr')
         newLyrFile = os.path.join(os.path.dirname(scratchgdb),planeName+'.lyr')
         # copy to newname in this workspace
         shutil.copy(lyrFile,newLyrFile)
