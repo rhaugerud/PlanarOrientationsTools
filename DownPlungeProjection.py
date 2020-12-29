@@ -312,8 +312,8 @@ for fc in projectFCS:
 testAndDelete(clipPoly)
 arcpy.CheckInExtension('3D')
 
-addMsgAndPrint('minY = '+str(minY))
-addMsgAndPrint('maxY = '+str(maxY))
+addMsgAndPrint('allMinY = '+str(allMinY))
+addMsgAndPrint('allMaxY = '+str(allMaxY))
 
 #  do OrientationPoints
 orp = xsFDS+'/CS'+token+'OrientationPoints'
